@@ -7,7 +7,7 @@ TODO: I want to use FileNotFound exceptions for convenience,
     but not sure if the errno and so on, make it make sense
 """
 
-from paths import UrlCompatible
+from paths import UrlCompatible,asUrl
 
 
 class EzFsException(Exception):
@@ -15,9 +15,10 @@ class EzFsException(Exception):
     All filesystem errors inherit from common base
     """
 
-    def __init__(self,filePath:str,problemMessage:str):
-        self.filename:str=filePath
-        problemMessage='File error:\n   %s\nWhile attempting to access:\n   %s'%(problemMessage,filePath) # noqa: E501 # pylint: disable=line-too-long
+    def __init__(self,filePath:UrlCompatible,problemMessage:str):
+        self.url=asUrl(filePath)
+        self.filename=self.url
+        problemMessage=f'File error:\n   {problemMessage}\nWhile attempting to access:\n   {self.filename}' # noqa: E501 # pylint: disable=line-too-long
         Exception.__init__(self,problemMessage)
 
 
@@ -27,7 +28,7 @@ class FileAccessException(EzFsException):
     have permission for.
     """
 
-    def __init__(self,filePath:str,mode:str=''):
+    def __init__(self,filePath:UrlCompatible,mode:str=''):
         err:str='Unable to open with mode "%s"'%mode
         EzFsException.__init__(self,filePath,err)
 
@@ -39,7 +40,7 @@ class UrlProtocolNotSupportedException(EzFsException):
 
     def __init__(self,filePath:UrlCompatible):
         err:str='URL protocol not supported.'
-        EzFsException.__init__(self,str(filePath),err)
+        EzFsException.__init__(self,filePath,err)
 
 
 class NoFileException(EzFsException):

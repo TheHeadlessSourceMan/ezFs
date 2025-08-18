@@ -27,26 +27,18 @@ class EzFs(ezFs.EzFsFilesystem):
     def __init__(self,url:typing.Optional[UrlCompatible]=None):
         # must instanciate shared class variables first thing
         if self.FILESYSTEMS is None:
-            # TODO: search for this stuff
-            classes:typing.List[typing.Tuple[str,str]]=[
-                ('osFs','OsFs'),
-                ('httpFs','HttpFs'),
-                #('webdavFs','DavFs'),
-                ('ftpFs','Ftp'),
-                ('zipFs','ZipFs'),
-                ]
+            from ezFs.plugins import PluginManager
+            self._plugins=PluginManager[typing.Type[ezFs.EzFsFilesystem]]('ezFs')
+            classes:typing.List[typing.Tuple[str,typing.Type[ezFs.EzFsFilesystem]]]=[]
+            for plugin in self._plugins:
+                classes.append((str(plugin.name),plugin))
             self.FILESYSTEMS=[]
             self.FILEBASED_FILESYSTEMS=[]
-            for moduleName,className in classes:
-                import importlib
-                module=importlib.import_module(moduleName)
-                clazz=module.__dict__[className]
-                if clazz.URL_PROTOCOLS:
-                    # if it has url protocols, it is a filesystem
-                    self.FILESYSTEMS.append(clazz)
-                else:
-                    # if it has no url protocols, it is a file type
+            for _,clazz in classes:
+                if issubclass(clazz,ezFs.BaseFilebasedFs):
                     self.FILEBASED_FILESYSTEMS.append(clazz)
+                else:
+                    self.FILESYSTEMS.append(clazz)
         # base constructor
         ezFs.EzFsFilesystem.__init__(self,url)
         # any local values to init
@@ -81,7 +73,7 @@ class EzFs(ezFs.EzFsFilesystem):
         """
         urlObj=asUrl(path)
         fs=self.getUrlSupport(urlObj)
-        return fs.open(urlObj,accessMode)
+        return fs().open(urlObj,accessMode)
 
     def getFsForCompressed(self,
         path:typing.Union[str,typing.IO]
@@ -125,23 +117,37 @@ class EzFs(ezFs.EzFsFilesystem):
         if self.cwd is not None:
             self.cwd.removeWatch(watchFn)
 
-    def copy(self,fromPath:UrlCompatible,toPath:UrlCompatible):
+    def copy(self, # pylint: disable=arguments-renamed # type: ignore
+        fromPath:UrlCompatible,
+        toPath:UrlCompatible
+        )->None:
         """
         Copy a file
         """
-        raise NotImplementedError()
+        source=self.filesystem.get(fromPath)
+        self.filesystem._copy(source,toPath) # pylint: disable=protected-access
 
-    def move(self,fromPath:str,toPath:str):
+    def move(self, # pylint: disable=arguments-renamed # type: ignore
+        fromPath:UrlCompatible,
+        toPath:UrlCompatible
+        )->None:
         """
         Move a file
         """
-        self.copy(fromPath,toPath)
-        self.delete(fromPath)
+        source=self.filesystem.get(fromPath)
+        self.filesystem._move(source,toPath) # pylint: disable=protected-access
 
-    def _delete(self,fsItem:ezFs.EzFsItem):
+    def _delete(self,fsItem:ezFs.EzFsItem)->None:
+        """ """
         fsItem.filesystem._delete(fsItem) # pylint: disable=protected-access
 
-    def _rename(self,fsItem:ezFs.EzFsItem,newName:str):
+    def _rename(self,
+        fsItem:typing.Union[ezFs.EzFsItem,UrlCompatible],
+        newName:UrlCompatible
+        )->None:
+        """ """
+        if not isinstance(fsItem,ezFs.EzFsItem):
+            fsItem=self.filesystem.get(fsItem)
         fsItem.filesystem._rename(fsItem,newName) # noqa: E501 # pylint: disable=line-too-long,protected-access
 
     def mount(self,
@@ -177,7 +183,8 @@ def cmdline(args:typing.Iterable[str])->int:
     if not args:
         printhelp=True
     else:
-        fs=EzFs("c:\\backed_up\\")
+        import os
+        fs=EzFs(os.curdir)
         for arg in args:
             if arg.startswith('-'):
                 av=arg.split('=',1)
@@ -220,7 +227,7 @@ def cmdline(args:typing.Iterable[str])->int:
                 elif av[0] in ['--regex']:
                     if len(av)>1:
                         print('\n$ regex %s'%fs.workingDirectory)
-                        items=fs.regexFind(av[1])
+                        items=[item for item in fs.regexFind(av[1])]
                         print('%d item(s) found:'%len(items))
                         for item in items:
                             print('   %s'%item)

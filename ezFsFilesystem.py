@@ -46,6 +46,8 @@ class EzFsFilesystem(ezFs.EzFsDirectory):
 
         Setting it will cause the working directory to be reset
         """
+        if self._url is None:
+            raise FileNotFoundError('File not found: URL=None')
         return self._url
     @url.setter
     def url(self,url:UrlCompatible):
@@ -74,7 +76,9 @@ class EzFsFilesystem(ezFs.EzFsDirectory):
         """
         return self.workingDirectory.open(path,accessMode)
 
-    def rename(self,newName:str,relativePath:typing.Optional[str]=None):
+    def rename(self, # type: ignore # pylint: disable=signature-differs
+        newName:UrlCompatible,
+        relativePath:typing.Optional[UrlCompatible]):
         """
         pass-through to working directory
         """
@@ -113,7 +117,7 @@ class EzFsFilesystem(ezFs.EzFsDirectory):
             return
         yield from d.getAll()
 
-    def get(self,
+    def get(self, # type: ignore
         path:UrlCompatible,
         idx:int=0
         )->ezFs.EzFsItem:
@@ -183,8 +187,27 @@ class EzFsFilesystem(ezFs.EzFsDirectory):
     @abstractmethod
     def _rename(self,
         fsItem:"ezFs.EzFsItem",
-        newName:str)->None:
+        newName:UrlCompatible)->None:
         """ rename """
+
+    @abstractmethod
+    def _copy(self,
+        fsItem:"ezFs.EzFsItem",
+        newLocation:UrlCompatible)->None:
+        """ copy """
+
+    def _move(self,
+        fsItem:"ezFs.EzFsItem",
+        newLocation:UrlCompatible)->None:
+        """
+        move
+        
+        You can either override this, or
+        just leave it at the default, which is
+        a copy followed by a delete
+        """
+        self._copy(fsItem,newLocation)
+        self._delete(fsItem)
 
     def isNative(self)->bool:
         """
@@ -192,11 +215,12 @@ class EzFsFilesystem(ezFs.EzFsDirectory):
         """
         return False
 
-    def relative(self,subdir:str)->ezFs.EzFsItem:
+    def getRelative(self,subdir:UrlCompatible)->ezFs.EzFsItem:
         """
         get a directory relative to the current working directory
         """
-        return self.workingDirectory.relative(subdir)
+        return self.workingDirectory.getRelative(subdir)
+    relative=getRelative
 
     @property
     def workingDirectory(self)->ezFs.EzFsDirectory:
@@ -211,6 +235,8 @@ class EzFsFilesystem(ezFs.EzFsDirectory):
             # this has a habit of getting called before constructor is done
             raise AttributeError("Not ready")
         if self._workingDirectory is None:
+            if self._url is None:
+                raise FileNotFoundError('Cannot get working directory for Url=None')
             lookup=self._getFsItem(self._url)
             if not isinstance(lookup,ezFs.EzFsDirectory):
                 raise FileNotFoundError(

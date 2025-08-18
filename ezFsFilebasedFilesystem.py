@@ -5,7 +5,7 @@ A filesystem based upon a file in another filesystem,
 for instance, a .zip file or .iso image
 """
 import typing
-from abc import abstractclassmethod
+from abc import abstractmethod
 from paths import URLCompatible,MimeTypeCompatible
 import ezFs
 
@@ -18,7 +18,8 @@ class EzFsFilebasedFilesystem(ezFs.EzFsFilesystem):
     def __init__(self):
         ezFs.EzFsFilesystem.__init__(self)
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def canRead(cls,
         filename:typing.Optional[URLCompatible],
         magicBuf:typing.Union[str,bytes,None],

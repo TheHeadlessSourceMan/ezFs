@@ -7,7 +7,7 @@ import typing
 from abc import abstractmethod
 import os
 import re
-from paths import asUrl,UrlCompatible,URL
+from paths import MimeTypeCompatible, asUrl,UrlCompatible,URL
 import ezFs
 
 
@@ -40,7 +40,8 @@ class EzFsDirectory(ezFs.EzFsItem):
         """
         return self._url
     @url.setter
-    def url(self,url:URL):
+    def url(self,url:UrlCompatible):
+        url=URL(url)
         if url is not None: # make sure it always ends with '/'
             u=str(url)
             if u[-1]!='/':
@@ -122,7 +123,35 @@ class EzFsDirectory(ezFs.EzFsItem):
         DERIVED CLASSES MUST IMPLEMENT THIS!
         """
 
-    def relative(self,subdir:str)->ezFs.EzFsItem:
+    @abstractmethod
+    def _mkdir(self,
+        newDirectoryName:UrlCompatible
+        )->None:
+        """
+        make a new directory
+        """
+
+    def mkdir(self,
+        newDirectoryName:UrlCompatible,
+        errorIfExists:bool=True
+        )->None:
+        """
+        make a new directory
+        """
+        if self.url is None:
+            raise FileNotFoundError('Unable to access directory [None]')
+        fullUrl=self.url/newDirectoryName
+        newDirectory=self.filesystem.get(fullUrl)
+        if newDirectory.exists:
+            if errorIfExists or newDirectory.isFile:
+                raise FileExistsError(newDirectory.url)
+        else:
+            self._mkdir(newDirectoryName)
+    md=mkdir
+    makeDirectory=mkdir
+    createDirectory=mkdir
+
+    def getRelative(self,subdir:UrlCompatible)->ezFs.EzFsItem:
         """
         get an item relative to this directory
         """
@@ -131,6 +160,7 @@ class EzFsDirectory(ezFs.EzFsItem):
             raise Exception('Attempting to get relative directory of an empty location') # noqa: E501 # pylint: disable=line-too-long
         subUrl=self.url.relative(subdir)
         return self.filesystem._getFsItem(subUrl)  # noqa: E501 # pylint: disable=line-too-long,disable=protected-access
+    relative=getRelative
 
     def listdir(self,
         subdir:typing.Optional[str]=None
@@ -173,16 +203,60 @@ class EzFsDirectory(ezFs.EzFsItem):
             ezFs.EzFsItem.delete(self)
     rm=delete
 
-    def rename(self, # pylint: disable=arguments-differ
-        newName:str,
-        relativePath:typing.Optional[str]=None
+    def __truediv__(self,
+        other:UrlCompatible
+        )->ezFs.EzFsItem:
+        """
+        Act like a pathlib.Path and use / operator, eg
+        "home"/"downloads"
+        """
+        if not isinstance(other,str):
+            other=asUrl(other)
+        return self.filesystem.get(f'{self.url}/{other}')
+
+    def __ltruediv__(self,
+        other:UrlCompatible
+        )->ezFs.EzFsItem:
+        """
+        Act like a pathlib.Path and use / operator, eg
+        "home"/"downloads"
+        """
+        if not isinstance(other,str):
+            other=asUrl(other)
+        return self.filesystem.get(f'{other}/{self.url}')
+
+    def write(self,
+        childFilename:UrlCompatible,
+        data:typing.Union[bytes,str],
+        encoding:str='utf-8',
+        errors:str='ignore',
+        mimeType:typing.Optional[MimeTypeCompatible]=None,
+        overwrite:bool=False,
+        append:bool=False
+        )->int:
+        """
+        Write a file in this directory
+        """
+        target=self.get(childFilename)
+        if target.exists:
+            if isinstance(target,EzFsDirectory) or \
+                (not overwrite and not append):
+                raise FileExistsError(str(target.url))
+        if not isinstance(target,ezFs.EzFsFile):
+            raise Exception("Attempt to write to a non-file")
+        return target.write(
+            data,encoding,errors,mimeType,append)
+
+    def rename(self,
+        newName:UrlCompatible,
+        relativePath:typing.Optional[UrlCompatible]=None
         )->None:
         """
         if a relativePath is given, will rename the child
 
         otherwise, will rename this directory
         """
-        if relativePath!='.':
+        if relativePath is not None and relativePath!='.':
             self.get(relativePath).rename(newName)
         else:
             ezFs.EzFsItem.rename(self,newName)
@@ -384,27 +458,21 @@ class EzFsDirectory(ezFs.EzFsItem):
 
         :return: whether a calling walk should continue or not
         """
+        result=None
         if algo is None:
             algo='TREE'
         top=tape is None
         if algo=='NEAREST':
-            if top:
-                class Tape:
-                    """
-                    A computational machine tape
-                    """
-                    def __init__(self):
-                        self.next=[]
-                tape=Tape()
+            if tape is None:
+                tape=[]
             for c in self.children:
                 if filesCb is not None:
                     result=filesCb(c,context)
                     if result is not None:
                         return result
             if top:
-                tape=typing.cast(Tape,tape)
-                while tape.next:
-                    nextItem=tape.next.pop(0)
+                while tape:
+                    nextItem=tape.pop(0)
                     nextItem.walk(filesCb,context,algo,tape)
         elif algo=='TREE':
             if not top:
@@ -432,6 +500,4 @@ class EzFsDirectory(ezFs.EzFsItem):
             if not top:
                 if filesCb is not None:
                     result=filesCb(self,context)
-                if result is not None:
-                    return result
-        return None
+        return result

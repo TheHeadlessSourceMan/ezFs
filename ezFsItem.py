@@ -23,7 +23,7 @@ class EzFsItem:
         self.fsId:typing.Optional[str]=None
         self._parent:typing.Optional["ezFs.EzFsDirectory"]=None
         self._filesystem:typing.Optional[ezFs.EzFsFilesystem]=filesystem
-        self._url:typing.Optional[URL]=asUrl(url)
+        self._url:typing.Optional[URL]=URL(url)
         self.canWatch:bool=False
 
     @property
@@ -37,10 +37,16 @@ class EzFsItem:
     @abstractmethod
     def isDir(self)->bool:
         """ is this a directory? """
+
+    @property
+    @abstractmethod
+    def exists(self)->bool:
+        """ does the file exist? """
+
     @property
     def isFile(self)->bool:
         """ is this a file? """
-        return not self.isDir
+        return self.exists and not self.isDir
 
     def __hash__(self)->int:
         """
@@ -85,10 +91,10 @@ class EzFsItem:
             return ''
         return self.url.filename
     @filename.setter
-    def filename(self,toName:str):
+    def filename(self,toName:UrlCompatible):
         if self.url is not None:
             toName=self.url.sibling(toName)
-            self.filesystem._rename(self.url,toName) # noqa: E501 # pylint: disable=line-too-long,disable=protected-access
+            self.filesystem.rename(self.url,toName)
     @property
     def name(self)->str:
         """
@@ -109,9 +115,8 @@ class EzFsItem:
         """
         if self._filesystem is None:
             import ezFs._ezFs
-            self._filesystem=ezFs._ezFs.EzFs(self._url)\
-                .workingDirectory\
-                .filesystem  # pylint: disable=protected-access
+            fsItem=ezFs._ezFs.EzFs(self._url) # pylint: disable=protected-access
+            self._filesystem=fsItem.workingDirectory.filesystem
         return self._filesystem
 
     @property
@@ -184,12 +189,94 @@ class EzFsItem:
         delete the item from the system
         """
         self.filesystem._delete(self) # pylint: disable=protected-access
+    rm=delete
+    remove=delete
 
-    def rename(self,newName:str)->None:
+    def makePathExist(self,
+        directoryLocation:typing.Union[UrlCompatible,ezFs.EzFsDirectory]
+        )->ezFs.EzFsDirectory:
+        """
+        Make sure a directory and all of the
+        directories leading up to it exists.
+        """
+        if isinstance(directoryLocation,ezFs.EzFsDirectory):
+            directory=directoryLocation
+        else:
+            directoryLocation=asUrl(directoryLocation)
+            directory=self.filesystem.get(directoryLocation)
+        if not isinstance(directory,ezFs.EzFsDirectory):
+            directory=directory.parent
+        if not directory.exists:
+            parent=self.makePathExist(directory.parent)
+            parent.mkdir(directory.name)
+        return directory
+
+    def move(self,
+        newLocation:UrlCompatible,
+        makePathExist:bool=False)->None:
+        """
+        Move the item somewhere else.
+        Can be on the same filesystem or across filesystems.
+        """
+        from .ezFsDirectory import EzFsDirectory
+        newLocation=asUrl(newLocation)
+        if makePathExist:
+            newLocationDirectory=self.makePathExist(newLocation.parent)
+        else:
+            newLocationDirectory=EzFsDirectory(
+                newLocation.parent,self.filesystem)
+            if not newLocationDirectory.exists:
+                raise FileNotFoundError(str(newLocationDirectory.url))
+        if self.filesystem==newLocationDirectory.filesystem:
+            self.filesystem._move(self,newLocation) # pylint: disable=protected-access
+        elif newLocation.isDirectory:
+            # need to do a recursive move
+            raise NotImplementedError()
+        else:
+            data=self.read()
+            newLocationDirectory.write(newLocation,data)
+            self.delete()
+    mv=move
+
+    def copy(self,
+        newLocation:UrlCompatible,
+        makePathExist:bool=False)->None:
+        """
+        Move the item somewhere else.
+        Can be on the same filesystem or across filesystems.
+        """
+        from .ezFsDirectory import EzFsDirectory
+        newLocation=asUrl(newLocation)
+        if makePathExist:
+            newLocationDirectory=self.makePathExist(newLocation.parent)
+        else:
+            newLocationDirectory=EzFsDirectory(
+                newLocation.parent,self.filesystem)
+            if not newLocationDirectory.exists:
+                raise FileNotFoundError(str(newLocationDirectory.url))
+        if self.filesystem==newLocationDirectory.filesystem:
+            self.filesystem._copy(self,newLocation) # pylint: disable=protected-access
+        elif newLocation.isDirectory:
+            # need to do a recursive move
+            raise NotImplementedError()
+        else:
+            data=self.read()
+            newLocationDirectory.write(newLocation,data)
+    cp=copy
+
+    def rename(self,newName:UrlCompatible)->None:
         """
         Change the name of the item
         """
-        self.filesystem._rename(self,newName)  # noqa: E501 # pylint: disable=line-too-long,protected-access
+        if self.url is None:
+            raise FileNotFoundError('Unable to rename file [None]')
+        newName=asUrl(newName)
+        if newName.path and newName.path!=self.url.path:
+            # cannot rename to another path location, so move instead
+            self.move(newName)
+            return
+        newName=str(newName)
+        self.filesystem._rename(self,str(newName))  # noqa: E501 # pylint: disable=line-too-long,protected-access
 
     def __repr__(self)->str:
         return str(self.url)

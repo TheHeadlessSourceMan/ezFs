@@ -1,5 +1,5 @@
 #!/usr/bin/env
-# -*- coding: utf-8 -*-
+#-*- coding: utf-8-*-
 """
 A filesystem item representing a file.
 
@@ -8,7 +8,7 @@ It also doubles as a file-like object
 import typing
 from abc import abstractmethod
 from typing_extensions import Buffer
-from paths import UrlCompatible
+from paths import MimeTypeCompatible,UrlCompatible
 import ezFs
 
 
@@ -73,7 +73,7 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
     def closed(self,closed:bool)->None:
         self.isOpen=not closed
 
-    def isatty(self) -> bool:
+    def isatty(self)->bool:
         """
         For compatability with IO
         """
@@ -94,7 +94,9 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
     @abstractmethod
     def read(self, # pylint: disable=arguments-differ
         numBytes:typing.Optional[int]=None,
-        encoding:typing.Optional[str]=None
+        encoding:typing.Optional[str]=None,
+        errors:str='ignore',
+        mimeType:typing.Optional[MimeTypeCompatible]=None,
         )->str:
         """
         read n# of bytes, or the whole thing
@@ -131,13 +133,27 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
         return ret
 
     @abstractmethod
-    def write(self,
-        s:typing.Any,
-        encoding:str='utf-8'
+    def write(self, # type: ignore # pylint: disable=arguments-renamed
+        data:typing.Union[bytes,str],
+        encoding:str='utf-8',
+        errors:str='ignore',
+        mimeType:typing.Optional[MimeTypeCompatible]=None,
+        append:bool=False
         )->int:
         """
         Write the data to the file
         """
+
+    def append(self,
+        data:typing.Union[bytes,str],
+        encoding:str='utf-8',
+        errors:str='ignore',
+        mimeType:typing.Optional[MimeTypeCompatible]=None
+        )->int:
+        """
+        Append the data to the file
+        """
+        return self.write(data,encoding,errors,mimeType,True)
 
     def writelines(self,
         __lines:typing.Union[
@@ -149,23 +165,21 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
         """
         For compatability with IO
         """
-        for line in __lines:
-            self.write(line)
-            self.write('\n')
+        self.write('\n'.join(str(line) for line in __lines))
 
-    def seekable(self) -> bool:
+    def seekable(self)->bool:
         """
         For compatability with IO
         """
         return True
 
-    def readable(self) -> bool:
+    def readable(self)->bool:
         """
         For compatability with IO
         """
         return 'r' in self._fileAccessMode
 
-    def writable(self) -> bool:
+    def writable(self)->bool:
         """
         For compatability with IO
         """
@@ -195,7 +209,7 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
         """
         self.isOpen=False
 
-    #@abstractmethod
+    @abstractmethod
     def open(self,fileAccessMode:typing.Optional[str]=None)->"EzFsFile":
         """
         Open this file and return a file-like object
@@ -211,7 +225,7 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
         self.close()
 
     @abstractmethod
-    def seek(self,offset:int,whence:int=0):
+    def seek(self,offset:int,whence:int=0)->int:
         """
         jump to file location
         """
