@@ -63,7 +63,7 @@ An ``EzFsFile`` that derives from your ``EzFsItem`` and implements
         encoding:typing.Optional[str]=None,
         errors:str='ignore',
         mimeType:typing.Optional[MimeTypeCompatible]=None,
-        )->str:
+        )->typing.Union[str,bytes]:
         """
         Read from the file
         """

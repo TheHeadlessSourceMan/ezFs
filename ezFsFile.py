@@ -91,13 +91,31 @@ class EzFsFile(ezFs.EzFsItem,typing.IO):
         """
         raise AttributeError('No truncate for abstract filesystems')
 
+    @typing.overload
+    def read(self, # pylint: disable=arguments-differ # type: ignore
+        numBytes:typing.Optional[int]=None,
+        encoding:None=None,
+        errors:str='ignore',
+        mimeType:typing.Optional[MimeTypeCompatible]=None,
+        )->bytes:
+        ...
+
+    @typing.overload
+    def read(self, # pylint: disable=arguments-differ
+        numBytes:typing.Optional[int]=None,
+        encoding:str='utf-8',
+        errors:str='ignore',
+        mimeType:typing.Optional[MimeTypeCompatible]=None,
+        )->str:
+        ...
+
     @abstractmethod
     def read(self, # pylint: disable=arguments-differ
         numBytes:typing.Optional[int]=None,
         encoding:typing.Optional[str]=None,
         errors:str='ignore',
         mimeType:typing.Optional[MimeTypeCompatible]=None,
-        )->str:
+        )->typing.Union[str,bytes]:
         """
         read n# of bytes, or the whole thing
         """

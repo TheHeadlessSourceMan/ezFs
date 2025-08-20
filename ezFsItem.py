@@ -6,7 +6,8 @@ A single item hanging on a filesystem tree
 import typing
 from abc import abstractmethod
 from paths import asUrl,UrlCompatible,URL
-import ezFs
+if typing.TYPE_CHECKING:
+    from ezFs import EzFsFilesystem,EzFsDirectory,WatcherFn
 
 
 class EzFsItem:
@@ -18,11 +19,11 @@ class EzFsItem:
 
     def __init__(self,
         url:UrlCompatible,
-        filesystem:typing.Optional["ezFs.EzFsFilesystem"]=None):
+        filesystem:typing.Optional["EzFsFilesystem"]=None):
         """ """
         self.fsId:typing.Optional[str]=None
-        self._parent:typing.Optional["ezFs.EzFsDirectory"]=None
-        self._filesystem:typing.Optional[ezFs.EzFsFilesystem]=filesystem
+        self._parent:typing.Optional["EzFsDirectory"]=None
+        self._filesystem:typing.Optional[EzFsFilesystem]=filesystem
         self._url:typing.Optional[URL]=URL(url)
         self.canWatch:bool=False
 
@@ -109,7 +110,7 @@ class EzFsItem:
             self.url.resource=name
 
     @property
-    def filesystem(self)->"ezFs.EzFsFilesystem":
+    def filesystem(self)->"EzFsFilesystem":
         """
         The filesystem this is a part of
         """
@@ -144,7 +145,7 @@ class EzFsItem:
 
     @abstractmethod
     def addWatch(self,
-        watchFn:ezFs.WatcherFn,
+        watchFn:"WatcherFn",
         pollingInterval:float=30
         )->None:
         """
@@ -153,20 +154,20 @@ class EzFsItem:
 
     @abstractmethod
     def removeWatch(self,
-        watchFn:ezFs.WatcherFn
+        watchFn:"WatcherFn"
         )->None:
         """
         remove a change watcher to this item
         """
 
     @property
-    def root(self)->"ezFs.EzFsDirectory":
+    def root(self)->"EzFsDirectory":
         """
         the root directory for our filesystem
         """
         return self.filesystem.root
     @property
-    def parent(self)->"ezFs.EzFsDirectory":
+    def parent(self)->"EzFsDirectory":
         """
         parent directory
         """
@@ -193,18 +194,19 @@ class EzFsItem:
     remove=delete
 
     def makePathExist(self,
-        directoryLocation:typing.Union[UrlCompatible,ezFs.EzFsDirectory]
-        )->ezFs.EzFsDirectory:
+        directoryLocation:typing.Union[UrlCompatible,"EzFsDirectory"]
+        )->"EzFsDirectory":
         """
         Make sure a directory and all of the
         directories leading up to it exists.
         """
-        if isinstance(directoryLocation,ezFs.EzFsDirectory):
+        from .ezFsDirectory import EzFsDirectory
+        if isinstance(directoryLocation,EzFsDirectory):
             directory=directoryLocation
         else:
             directoryLocation=asUrl(directoryLocation)
             directory=self.filesystem.get(directoryLocation)
-        if not isinstance(directory,ezFs.EzFsDirectory):
+        if not isinstance(directory,EzFsDirectory):
             directory=directory.parent
         if not directory.exists:
             parent=self.makePathExist(directory.parent)
